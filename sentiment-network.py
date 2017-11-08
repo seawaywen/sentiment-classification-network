@@ -64,6 +64,11 @@ for _word, _ratio in pos_neg_ratios.most_common():
 top_30_negative_words = pos_neg_ratios.most_common()[:-31:-1]
 
 
+vocab = set(total_counts.keys())
+vocab_size = len(vocab)
+layer_0 = np.zeros((1, vocab_size))
+
+
 class SentimentNetwork:
 
     def __init__(self, reviews, labels, hidden_nodes=10, learning_rate=0.1):
@@ -143,7 +148,7 @@ class SentimentNetwork:
 
         for word in review.split(' '):
             if word in self.word2index.keys():
-                self.layer_0[0][self.word2index[word]] += 1
+                self.layer_0[0][self.word2index[word]] = 1
 
     @staticmethod
     def get_target_for_label(label):
