@@ -300,7 +300,9 @@ if __name__ == '__main__':
     # print(top_30_negative_words)
 
     mlp = SentimentNetwork(
-        reviews_data[:-1000], labels_data[:-1000], learning_rate=0.001)
+        reviews_data[:-1000], labels_data[:-1000], min_count=20,
+        polarity_cutoff=0.05, learning_rate=0.001)
     mlp.train(reviews_data[:-1000], labels_data[:-1000])
 
     mlp.test(reviews_data[-1000:], labels_data[-1000:])
+
