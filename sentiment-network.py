@@ -22,61 +22,19 @@ def print_review_and_label(i):
 reviews_data, labels_data = load_resource()
 
 
-positive_counts = Counter()
-negative_counts = Counter()
-total_counts = Counter()
-
-for idx in range(len(reviews_data)):
-    if labels_data[idx] == 'POSITIVE':
-        for _word in reviews_data[idx].split(' '):
-            positive_counts[_word] += 1
-            total_counts[_word] += 1
-    else:
-        for _word in reviews_data[idx].split(' '):
-            negative_counts[_word] += 1
-            total_counts[_word] += 1
-
-
-# positive_counts.most_common() will count the common words like 'the'
-# in both positive and negative reviews, we want the words found in
-# positive reviews more often than in  negative reviews, and vice versa
-
-# calculate the ratios of word usage between positive and negative reviews
-# positive_counts[word] / float(negative_counts[word] + 1)
-# ratio > 1, the positive word:
-#   the more skewed a word is torward positive, the farther from 1
-# ratio < 1, the negative word:
-#   the more skewed a word is torward negative, the closer to 0
-# ratio ~ 1, the neutral word:
-pos_neg_ratios = Counter()
-for term, cnt in list(total_counts.most_common()):
-    if cnt > 100:
-        pos_neg_ratio = positive_counts[term] / float(negative_counts[term] + 1)
-        pos_neg_ratios[term] = pos_neg_ratio
-
-# center all values around natural so the absolute value from neutral of ratio
-# for a word would indicate how much sentiment the word conveys
-# convert ratios to logs
-for _word, _ratio in pos_neg_ratios.most_common():
-    pos_neg_ratios[_word] = np.log(_ratio)
-
-# top 30 words most frequently seen in a review with 'NEGATIVE' label
-top_30_negative_words = pos_neg_ratios.most_common()[:-31:-1]
-
-
-vocab = set(total_counts.keys())
-vocab_size = len(vocab)
-layer_0 = np.zeros((1, vocab_size))
-
-
 class SentimentNetwork:
 
-    def __init__(self, reviews, labels, hidden_nodes=10, learning_rate=0.1):
+    def __init__(self, reviews, labels, min_count=10, polarity_cutoff=0.1,
+                 hidden_nodes=10, learning_rate=0.1):
         """Create the SentimentNetwork with the given parameters
         Args:
             reviews(list) - list of reviews that used for training
             labels(list) - list of POSITIVE/NEGATIVE labels associated with the
                 given reviews
+            min_count(int) - if the word occur more than this value, add it to
+                the vocabulary
+            polarity_cutoff(float) - absolute value of word's
+                position-to-negative ratio must be at this big to be considered
             hidden_nodes(int) - number of nodes to create in the hidden layer
             learning_rate(float) - learning rate for training
         """
@@ -95,15 +53,71 @@ class SentimentNetwork:
         self.layer_1 = None
         # --------------------------------------------------
 
-        self.pre_process_data(reviews, labels)
+        self.pre_process_data(reviews, labels, polarity_cutoff, min_count)
         self.init_network(
             len(self.review_vocab), hidden_nodes, 1, learning_rate)
 
-    def pre_process_data(self, reviews, labels):
+    @staticmethod
+    def _calculate_ratios(reviews):
+        positive_counts = Counter()
+        negative_counts = Counter()
+        total_counts = Counter()
+
+        for idx in range(len(reviews)):
+            if labels_data[idx] == 'POSITIVE':
+                for _word in reviews_data[idx].split(' '):
+                    positive_counts[_word] += 1
+                    total_counts[_word] += 1
+            else:
+                for _word in reviews_data[idx].split(' '):
+                    negative_counts[_word] += 1
+                    total_counts[_word] += 1
+
+        # positive_counts.most_common() will count the common words like 'the'
+        # in both positive and negative reviews, we want the words found in
+        # positive reviews more often than in  negative reviews, and vice versa
+
+        # calc the ratios of word usage between positive and negative reviews
+        # positive_counts[word] / float(negative_counts[word] + 1)
+        # ratio > 1, the positive word:
+        #   the more skewed a word is torward positive, the farther from 1
+        # ratio < 1, the negative word:
+        #   the more skewed a word is torward negative, the closer to 0
+        # ratio ~ 1, the neutral word:
+        pos_neg_ratios = Counter()
+
+        for term, cnt in list(total_counts.most_common()):
+            if cnt > 50:
+                pos_neg_ratio = positive_counts[term] / \
+                                float(negative_counts[term] + 1)
+                pos_neg_ratios[term] = pos_neg_ratio
+
+        # center all values around natural so the absolute value
+        # from neutral of ratio for a word would indicate how much
+        # sentiment the word conveys
+        # convert ratios to logs
+        for word, ratio in pos_neg_ratios.most_common():
+            pos_neg_ratios[word] = np.log(ratio + 0.001)  # avoid divide by 0
+
+        return positive_counts, negative_counts, total_counts, pos_neg_ratios
+
+    def pre_process_data(self, reviews, labels, polarity_cutoff, min_count):
+        positive_counts, negative_counts, \
+            total_counts, pos_neg_ratios = self._calculate_ratios(reviews)
+
         review_vocab = set()
         for review in reviews:
             for word in review.split(' '):
-                review_vocab.add(word)
+                if total_counts[word] > min_count:
+                    if word in pos_neg_ratios.keys():
+                        if pos_neg_ratios[word] >= polarity_cutoff \
+                                or pos_neg_ratios[word] <= -polarity_cutoff:
+                            # only add words meet above condition:
+                            # word occur at least min_count times
+                            # and with pos/neg ratios
+                            review_vocab.add(word)
+                    else:
+                        review_vocab.add(word)
 
         self.review_vocab = list(review_vocab)
 
