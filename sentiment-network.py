@@ -92,7 +92,7 @@ class SentimentNetwork:
         self.learning_rate = 0
 
         self.weights_0_1 = self.weights_1_2 = None
-        self.layer_0 = None
+        self.layer_1 = None
         # --------------------------------------------------
 
         self.pre_process_data(reviews, labels)
@@ -140,15 +140,7 @@ class SentimentNetwork:
             0.0, self.output_nodes**-0.5,
             (self.hidden_nodes, self.output_nodes))
 
-        self.layer_0 = np.zeros((1, input_nodes))
-
-    def update_input_layer(self, review):
-        # reset the layer to be all 0s
-        self.layer_0 *= 0
-
-        for word in review.split(' '):
-            if word in self.word2index.keys():
-                self.layer_0[0][self.word2index[word]] = 1
+        self.layer_1 = np.zeros((1, hidden_nodes))
 
     @staticmethod
     def get_target_for_label(label):
@@ -168,7 +160,16 @@ class SentimentNetwork:
     def sigmoid_output_2_derivative(output):
         return output * (1 - output)
 
-    def train(self, training_reviews, training_labels):
+    def train(self, training_reviews_raw, training_labels):
+        training_reviews = list()
+
+        for review in training_reviews_raw:
+            indices = set()
+            for word in review.split(' '):
+                if word in self.word2index.keys():
+                    indices.add(self.word2index[word])
+            training_reviews.append(list(indices))
+
         assert(len(training_reviews) == len(training_labels))
 
         correct_so_far = 0
@@ -181,14 +182,13 @@ class SentimentNetwork:
 
             # FORWARD PASSING
             # --------------------------------------------------
-            # input layer
-            self.update_input_layer(review)
-
             # hidden layer
-            layer_1 = self.layer_0.dot(self.weights_0_1)
+            self.layer_1 *= 0
+            for index in review:
+                self.layer_1 += self.weights_0_1[index]
 
             # output layer
-            layer_2 = self.sigmoid(layer_1.dot(self.weights_1_2))
+            layer_2 = self.sigmoid(self.layer_1.dot(self.weights_1_2))
             # --------------------------------------------------
 
             # BACKWARD PASSING
@@ -205,10 +205,10 @@ class SentimentNetwork:
             layer_1_delta = layer_1_error
 
             # update the weights
-            self.weights_1_2 -= layer_1.T.dot(layer_2_delta) * \
+            self.weights_1_2 -= self.layer_1.T.dot(layer_2_delta) * \
                 self.learning_rate
-            self.weights_0_1 -= self.layer_0.T.dot(layer_1_delta) * \
-                self.learning_rate
+            for index in review:
+                self.weights_0_1[index] -= layer_1_delta[0] * self.learning_rate
             # --------------------------------------------------
 
             # keep track of correct predictions
@@ -264,14 +264,17 @@ class SentimentNetwork:
     def run(self, review):
         """Returns a POSITIVE or NEGATIVE prediction for the given review"""
 
-        # input layer
-        self.update_input_layer(review.lower())
-
         # hidden layer
-        layer_1 = self.layer_0.dot(self.weights_0_1)
+        self.layer_1 *= 0
+        unique_indices = set()
+        for word in review.lower().split(' '):
+            if word in self.word2index.keys():
+                unique_indices.add(self.word2index[word])
+        for index in unique_indices:
+            self.layer_1 += self.weights_0_1[index]
 
         # output layer
-        layer_2 = self.sigmoid(layer_1.dot(self.weights_1_2))
+        layer_2 = self.sigmoid(self.layer_1.dot(self.weights_1_2))
 
         return 'POSITIVE' if layer_2[0] >= 0.5 else 'NEGATIVE'
 
